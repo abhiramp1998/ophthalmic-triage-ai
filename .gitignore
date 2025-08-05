@@ -1,0 +1,18 @@
+# Python virtual environments
+venv/
+env/
+chatbot_env/
+*.env
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# macOS specific files
+.DS_Store
+
+# Streamlit secrets file (for local testing)
+.streamlit/secrets.toml
+
+# FAISS index folder (should be generated, not stored in git)
+data_scripts/faiss_index/
