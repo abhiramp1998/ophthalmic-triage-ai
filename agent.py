@@ -12,7 +12,7 @@ from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_community.vectorstores import FAISS
 
 # --- CONFIGURATION ---
-MAX_QUESTIONS = 12 # Set the maximum number of follow-up questions
+MAX_QUESTIONS = 8 # Set the maximum number of follow-up questions
 
 # --- ROBUST PATH DEFINITIONS ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
