@@ -5,3 +5,5 @@ langchain-community
 PyPDF2
 faiss-cpu
 sentence-transformers
+SpeechRecognition
+PyAudio
