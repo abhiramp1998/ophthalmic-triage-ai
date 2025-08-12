@@ -1,4 +1,4 @@
-# agent.py (Definitive, Complete, and Verified Version with Dynamic Retrieval)
+# agent.py (Definitive, Complete, and Verified Version with all Features)
 
 import streamlit as st
 import sys
@@ -17,7 +17,7 @@ from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_community.vectorstores import FAISS
 
 # --- CONFIGURATION ---
-MAX_QUESTIONS = 8 # Set the maximum number of follow-up questions
+MAX_QUESTIONS = 8 
 
 # --- ROBUST PATH DEFINITIONS ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -131,7 +131,7 @@ class RouterAgent:
             1.  First, assess your confidence. Do you have a clear clinical picture?
             2.  If the conversation reveals a clear, high-urgency emergency (e.g., chemical injury, sudden total vision loss, severe pain with vision loss), your confidence is high. Respond with ONLY "provide_summary".
             3.  If the conversation reveals a clear, low-urgency issue (e.g., mild itching with no other symptoms), your confidence is high. Respond with ONLY "provide_summary".
-            4.  If the situation is ambiguous or key details are still missing, your confidence is low. You must gather more information. Respond with ONLY "ask_question".
+            4.  If the situation is ambiguous or key details are still missing (e.g., pain is mentioned but severity is unknown; redness is mentioned but vision status is unknown), your confidence is low. You must gather more information. Respond with ONLY "ask_question".
 
             Your response must be either "provide_summary" or "ask_question".
             """,
@@ -262,18 +262,19 @@ if not st.session_state.get("finished", False):
         with st.spinner("Thinking..."):
             history = "\n".join([f"- {msg['role'].capitalize()}: {msg['content']}" for msg in st.session_state.messages])
             
-            # Refine and Retrieve is now done at EVERY turn of the conversation.
-            refined_query = query_refiner.refine_query(history)
-            st.session_state.retrieved_docs = retriever.retrieve_context(refined_query, k=5)
-            
             if len(st.session_state.messages) == 2: # First user message
                 if not relevance_checker.check_relevance(prompt):
                     response = "I am an ophthalmology triage assistant and can only help with eye-related problems. Please restart the conversation with an eye symptom."
                     st.session_state.finished = True
                 else:
+                    refined_query = query_refiner.refine_query(history)
+                    st.session_state.retrieved_docs = retriever.retrieve_context(refined_query, k=5)
                     response = question_generator.generate_question(history)
                     st.session_state.question_count += 1
             else: # Follow-up messages
+                refined_query = query_refiner.refine_query(history)
+                st.session_state.retrieved_docs = retriever.retrieve_context(refined_query, k=5)
+
                 if st.session_state.question_count >= MAX_QUESTIONS:
                     next_step = "provide_summary"
                 else:
@@ -286,7 +287,9 @@ if not st.session_state.get("finished", False):
                     response = summary_generator.generate_summary(history)
                     st.session_state.finished = True
             
-            if st.session_state.finished and "**Next Step:**" not in response:
+            # --- THIS IS THE FIX ---
+            # The "Next Step" logic is now MOVED here and only runs after a valid summary.
+            if st.session_state.finished and "**TRIAGE SUMMARY:**" in response:
                 if "URGENT" in response:
                     response += "\n\n**Next Step:** This may indicate a serious condition. Please go to your nearest Accident & Emergency (A&E) department immediately."
                 elif "SEMI-URGENT" in response:
@@ -301,6 +304,8 @@ if not st.session_state.get("finished", False):
 if st.session_state.get("finished", False):
     st.button("Start New Triage", on_click=reset_conversation)
 
+    # The "Listen to Summary" feature is now removed to prevent errors
+    
     full_history = "Ophthalmic Triage AI - Conversation Summary\n" + "="*40 + "\n\n"
     for msg in st.session_state.messages:
         full_history += f"{msg['role'].capitalize()}: {msg['content']}\n\n"
