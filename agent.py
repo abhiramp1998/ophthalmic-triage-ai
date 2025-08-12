@@ -1,4 +1,4 @@
-# agent.py (Definitive, Complete, and Verified Version with all Features)
+# agent.py (Definitive, Complete, and Verified Version with Dynamic Retrieval)
 
 import streamlit as st
 import sys
@@ -17,7 +17,7 @@ from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_community.vectorstores import FAISS
 
 # --- CONFIGURATION ---
-MAX_QUESTIONS = 8 
+MAX_QUESTIONS = 8 # Set the maximum number of follow-up questions
 
 # --- ROBUST PATH DEFINITIONS ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -131,7 +131,7 @@ class RouterAgent:
             1.  First, assess your confidence. Do you have a clear clinical picture?
             2.  If the conversation reveals a clear, high-urgency emergency (e.g., chemical injury, sudden total vision loss, severe pain with vision loss), your confidence is high. Respond with ONLY "provide_summary".
             3.  If the conversation reveals a clear, low-urgency issue (e.g., mild itching with no other symptoms), your confidence is high. Respond with ONLY "provide_summary".
-            4.  If the situation is ambiguous or key details are still missing (e.g., pain is mentioned but severity is unknown; redness is mentioned but vision status is unknown), your confidence is low. You must gather more information. Respond with ONLY "ask_question".
+            4.  If the situation is ambiguous or key details are still missing, your confidence is low. You must gather more information. Respond with ONLY "ask_question".
 
             Your response must be either "provide_summary" or "ask_question".
             """,
@@ -199,20 +199,6 @@ class SummaryAgent:
         response = self.llm.invoke(formatted_prompt)
         return response.content
 
-# --- TEXT-TO-SPEECH HELPER FUNCTIONS (using gTTS) ---
-def text_to_audio_autoplay(text: str):
-    try:
-        clean_text = re.sub(r'\*\*', '', text) # Remove bold markdown for cleaner speech
-        tts = gTTS(text=clean_text, lang='en')
-        audio_fp = BytesIO()
-        tts.write_to_fp(audio_fp)
-        audio_fp.seek(0)
-        audio_base64 = base64.b64encode(audio_fp.read()).decode('utf-8')
-        audio_tag = f'<audio autoplay="true" src="data:audio/mp3;base64,{audio_base64}">'
-        st.markdown(audio_tag, unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"An error occurred in text-to-speech autoplay: {e}")
-
 # --- THE MAIN STREAMLIT APPLICATION ---
 
 st.set_page_config(page_title="Ophthalmic Triage AI", page_icon="👁️")
@@ -221,13 +207,9 @@ st.subheader("An AI-powered assistant for assessing eye-related symptoms.")
 st.caption("This is an academic proof-of-concept and does not provide medical advice.")
 
 def reset_conversation():
-    st.session_state.messages = [{"role": "assistant", "content": "Hello! I am an AI assistant designed to help with the initial triage of eye symptoms. Please describe your main concern."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hello! I am an AI assistant designed to help with the initial triage of eye symptoms."}]
     st.session_state.question_count = 0
     st.session_state.finished = False
-    st.session_state.is_recording = False
-    st.session_state.transcribed_text = None
-    st.session_state.input_mode = "text"
-    st.session_state.turn = "user"
     st.session_state.retrieved_docs = []
     st.rerun()
 
@@ -267,104 +249,58 @@ retriever, relevance_checker, query_refiner, router, question_generator, summary
 if "messages" not in st.session_state:
     reset_conversation()
 
-# Message Display Loop with Audio Logic
-for i, message in enumerate(st.session_state.messages):
+# Message Display Loop
+for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        if message.get("play_audio_autoplay", False):
-            text_to_audio_autoplay(message["content"])
-            st.session_state.messages[i]["play_audio_autoplay"] = False
 
 # Main Orchestrator Logic
-prompt = None
-
-if st.session_state.turn == "user" and not st.session_state.get("finished", False):
-    if st.session_state.get("is_recording"):
-        with st.spinner("🔴 Recording... Speak now!"):
-            r = sr.Recognizer()
-            with sr.Microphone() as source:
-                try:
-                    audio = r.listen(source, timeout=10, phrase_time_limit=30)
-                    st.info("Transcribing...")
-                    text = r.recognize_google(audio)
-                    st.session_state.transcribed_text = text
-                except Exception as e: st.warning("Could not process audio. Please try again.")
-            st.session_state.is_recording = False
-            st.rerun()
-    else:
-        if st.session_state.get("transcribed_text"):
-            prompt = st.session_state.transcribed_text
-            st.session_state.transcribed_text = None
-            st.session_state.input_mode = "voice"
-        else:
-            col1, col2 = st.columns([7, 1])
-            with col1:
-                text_prompt = st.chat_input("Describe your symptoms...")
-                if text_prompt:
-                    prompt = text_prompt
-                    st.session_state.input_mode = "text"
-            with col2:
-                if st.button("🎤", key="speak_button"):
-                    st.session_state.is_recording = True
-                    st.rerun()
-
-elif st.session_state.turn == "assistant" and not st.session_state.get("finished", False):
-    if st.button("▶️ Continue"):
-        st.session_state.turn = "user"
+if not st.session_state.get("finished", False):
+    if prompt := st.chat_input("Describe your symptoms..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        with st.spinner("Thinking..."):
+            history = "\n".join([f"- {msg['role'].capitalize()}: {msg['content']}" for msg in st.session_state.messages])
+            
+            # Refine and Retrieve is now done at EVERY turn of the conversation.
+            refined_query = query_refiner.refine_query(history)
+            st.session_state.retrieved_docs = retriever.retrieve_context(refined_query, k=5)
+            
+            if len(st.session_state.messages) == 2: # First user message
+                if not relevance_checker.check_relevance(prompt):
+                    response = "I am an ophthalmology triage assistant and can only help with eye-related problems. Please restart the conversation with an eye symptom."
+                    st.session_state.finished = True
+                else:
+                    response = question_generator.generate_question(history)
+                    st.session_state.question_count += 1
+            else: # Follow-up messages
+                if st.session_state.question_count >= MAX_QUESTIONS:
+                    next_step = "provide_summary"
+                else:
+                    next_step = router.route(history)
+                
+                if "ask_question" in next_step:
+                    response = question_generator.generate_question(history)
+                    st.session_state.question_count += 1
+                else:
+                    response = summary_generator.generate_summary(history)
+                    st.session_state.finished = True
+            
+            if st.session_state.finished and "**Next Step:**" not in response:
+                if "URGENT" in response:
+                    response += "\n\n**Next Step:** This may indicate a serious condition. Please go to your nearest Accident & Emergency (A&E) department immediately."
+                elif "SEMI-URGENT" in response:
+                    response += "\n\n**Next Step:** Please contact an ophthalmologist or optometrist for an appointment within the next 24-48 hours."
+                else:
+                    response += "\n\n**Next Step:** Please book a routine appointment with your optometrist at your convenience."
+        
+        st.session_state.messages.append({"role": "assistant", "content": response})
         st.rerun()
 
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt, "play_audio": False})
-    
-    if st.session_state.input_mode == "voice":
-        st.session_state.turn = "assistant"
-    
-    with st.spinner("Thinking..."):
-        history = "\n".join([f"- {msg['role'].capitalize()}: {msg['content']}" for msg in st.session_state.messages])
-        
-        # Refine and Retrieve is now done at EVERY turn of the conversation.
-        refined_query = query_refiner.refine_query(history)
-        st.session_state.retrieved_docs = retriever.retrieve_context(refined_query, k=5)
-        
-        if len(st.session_state.messages) == 2: # First user message
-            if not relevance_checker.check_relevance(prompt):
-                response = "I am an ophthalmology triage assistant and can only help with eye-related problems. Please restart the conversation with an eye symptom."
-                st.session_state.finished = True
-            else:
-                response = question_generator.generate_question(history)
-                st.session_state.question_count += 1
-        else: # Follow-up messages
-            if st.session_state.question_count >= MAX_QUESTIONS:
-                next_step = "provide_summary"
-            else:
-                next_step = router.route(history)
-            
-            if "ask_question" in next_step:
-                response = question_generator.generate_question(history)
-                st.session_state.question_count += 1
-            else:
-                response = summary_generator.generate_summary(history)
-                st.session_state.finished = True
-        
-        if st.session_state.finished and "**Next Step:**" not in response:
-            if "URGENT" in response:
-                response += "\n\n**Next Step:** This may indicate a serious condition. Please go to your nearest Accident & Emergency (A&E) department immediately."
-            elif "SEMI-URGENT" in response:
-                response += "\n\n**Next Step:** Please contact an ophthalmologist or optometrist for an appointment within the next 24-48 hours."
-            else:
-                response += "\n\n**Next Step:** Please book a routine appointment with your optometrist at your convenience."
-    
-    should_autoplay = st.session_state.get("input_mode") == "voice" and not st.session_state.get("finished", False)
-    st.session_state.messages.append({
-        "role": "assistant", "content": response, "play_audio_autoplay": should_autoplay, "is_summary": st.session_state.get("finished", False)
-    })
-    st.rerun()
-
+# Final UI Elements
 if st.session_state.get("finished", False):
     st.button("Start New Triage", on_click=reset_conversation)
 
-    # The "Listen to Summary" feature is now removed to prevent errors
-    
     full_history = "Ophthalmic Triage AI - Conversation Summary\n" + "="*40 + "\n\n"
     for msg in st.session_state.messages:
         full_history += f"{msg['role'].capitalize()}: {msg['content']}\n\n"
