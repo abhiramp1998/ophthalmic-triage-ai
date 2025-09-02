@@ -16,3 +16,5 @@ __pycache__/
 
 # FAISS index folder (should be generated, not stored in git)
 data_scripts/faiss_index/
+
+.streamlit
