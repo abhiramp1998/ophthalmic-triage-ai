@@ -567,11 +567,12 @@ else:
         st.download_button(label="📥 Download Triage Summary", data=full_history, file_name="triage_summary.txt", mime="text/plain")
 
         with st.expander("🔎 View Clinical Evidence", expanded=True):
+            # CSS for theme-aware, improved styling
             st.markdown("""
             <style>
-            .evidence-claim { margin-bottom: 5px; }
-            .evidence-source { font-size: 0.9em; color: #888; margin-left: 10px; }
-            .evidence-snippet { background-color: #f0f2f6; border-left: 4px solid #ccc; padding: 10px; margin-left: 10px; margin-bottom: 10px; border-radius: 4px; }
+            .evidence-claim { margin-bottom: 5px; color: var(--text-color); }
+            .evidence-source { font-size: 0.9em; color: var(--secondary-text-color); margin-left: 10px; }
+            .evidence-snippet { background-color: var(--secondary-background-color); border-left: 4px solid var(--separator-color); padding: 10px; margin-left: 10px; margin-bottom: 10px; border-radius: 4px; }
             .evidence-snippet mark { background-color: #ffeb3b; color: black; padding: 0.1em 0.2em; border-radius: 3px; }
             </style>
             """, unsafe_allow_html=True)
