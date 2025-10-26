@@ -14,7 +14,7 @@ import re
 import math
 import html
 from typing import List, Dict, Tuple
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import SentenceTransformerEmbeddings
@@ -411,7 +411,7 @@ def load_agents(api_key):
         st.error("Google API Key not found. Please add it to your Streamlit Secrets.")
         st.stop()
     try:
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=api_key, temperature=0.0)
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, temperature=0.0)
         retriever = RetrieverAgent()
         relevance_checker = RelevanceCheckAgent(llm)
         query_refiner = QueryRefinementAgent(llm)
