@@ -9,3 +9,4 @@ sentence-transformers
 SpeechRecognition
 PyAudio
 gTTS
+langchain-text-splitters
